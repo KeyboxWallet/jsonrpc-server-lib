@@ -31,6 +31,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <stdlib.h>
 #include "json-rpc-interface.hpp"
 
 using tcp = boost::asio::ip::tcp;              // from <boost/asio/ip/tcp.hpp>
@@ -326,6 +327,7 @@ class json_rpc_server_factory : public std::enable_shared_from_this<json_rpc_ser
         if (ec)
         {
             fail(ec, "bind");
+            exit(1);
             return;
         }
 
