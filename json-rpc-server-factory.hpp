@@ -386,6 +386,7 @@ class json_rpc_server_factory : public std::enable_shared_from_this<json_rpc_ser
         if (ec)
         {
             fail(ec, "accept");
+            return;
         }
         else
         {
