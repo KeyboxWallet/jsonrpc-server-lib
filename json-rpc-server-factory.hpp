@@ -36,6 +36,7 @@
 
 using tcp = boost::asio::ip::tcp;              // from <boost/asio/ip/tcp.hpp>
 namespace websocket = boost::beast::websocket; // from <boost/beast/websocket.hpp>
+namespace beast = boost::beast;
 using json = nlohmann::json;
 //------------------------------------------------------------------------------
 
@@ -49,9 +50,6 @@ void fail(boost::system::error_code ec, char const *what)
 class json_rpc_session : public std::enable_shared_from_this<json_rpc_session>, public generic_json_rpc_session
 {
     websocket::stream<tcp::socket> ws_;
-    boost::asio::strand<
-        boost::asio::io_context::executor_type>
-        strand_;
     boost::beast::flat_buffer in_buffer_;
     json_rpc_context_free_server *context_free_server;
     json_rpc_context_server *context_server;
@@ -61,7 +59,7 @@ class json_rpc_session : public std::enable_shared_from_this<json_rpc_session>, 
     explicit json_rpc_session(
         tcp::socket socket,
         json_rpc_context_free_server *server)
-        : ws_(std::move(socket)), strand_(ws_.get_executor())
+        : ws_(std::move(socket))
     {
         context_free_server = server;
         context_server = NULL;
@@ -70,7 +68,7 @@ class json_rpc_session : public std::enable_shared_from_this<json_rpc_session>, 
     explicit json_rpc_session(
         tcp::socket socket,
         json_rpc_context_server *server)
-        : ws_(std::move(socket)), strand_(ws_.get_executor())
+        : ws_(std::move(socket))
     {
         context_server = server;
 	    context_free_server = NULL;
@@ -80,17 +78,25 @@ class json_rpc_session : public std::enable_shared_from_this<json_rpc_session>, 
     void
     run()
     {
+        ws_.set_option(
+            websocket::stream_base::timeout::suggested(
+                beast::role_type::server));
+
+        // Set a decorator to change the Server of the handshake
+        ws_.set_option(websocket::stream_base::decorator(
+            [](websocket::response_type& res)
+            {
+                /*res.set(http::field::server,
+                    std::string(BOOST_BEAST_VERSION_STRING) +
+                        " websocket-server-async");*/
+                 res.insert("Sec-WebSocket-Protocol", "json-rpc-server");
+            }));
         // Accept the websocket handshake
-        ws_.async_accept_ex(
-            [](websocket::response_type& res){
-                res.insert("Sec-WebSocket-Protocol", "json-rpc-server");
-            },
-            boost::asio::bind_executor(
-                strand_,
-                std::bind(
+        ws_.async_accept(
+            beast::bind_front_handler(
                     &json_rpc_session::on_accept,
-                    shared_from_this(),
-                    std::placeholders::_1)));
+                    shared_from_this()
+            ));
     }
 
     void
@@ -112,13 +118,10 @@ class json_rpc_session : public std::enable_shared_from_this<json_rpc_session>, 
         // Read a message into our buffer
         ws_.async_read(
             in_buffer_,
-            boost::asio::bind_executor(
-                strand_,
-                std::bind(
+            beast::bind_front_handler(
                     &json_rpc_session::on_read,
-                    shared_from_this(),
-                    std::placeholders::_1,
-                    std::placeholders::_2)));
+                    shared_from_this()
+            ));
     }
 
     void do_close()
@@ -155,7 +158,7 @@ class json_rpc_session : public std::enable_shared_from_this<json_rpc_session>, 
             return;
         }
 
-        const boost::asio::const_buffer *c = boost::asio::buffer_sequence_begin(in_buffer_.data());
+        const boost::asio::mutable_buffer *c = boost::asio::buffer_sequence_begin(in_buffer_.data());
         nlohmann::detail::input_adapter i((char *)c->data(), c->size());
         json j;
         try
@@ -235,11 +238,14 @@ class json_rpc_session : public std::enable_shared_from_this<json_rpc_session>, 
      }
 
 
+
     void do_write(json &oj)
     {
+        do_write(oj);
+        /*
         strand_.post(
             std::bind(&json_rpc_session::do_write_, shared_from_this(), oj),
-            boost::asio::get_associated_allocator(this));
+            boost::asio::get_associated_allocator(this));*/
     }
 
   private:
@@ -253,14 +259,10 @@ class json_rpc_session : public std::enable_shared_from_this<json_rpc_session>, 
         ws_.text(true);
         ws_.async_write(
             out_buffer->data(),
-            boost::asio::bind_executor(
-                strand_,
-                std::bind(
+            beast::bind_front_handler(
                     &json_rpc_session::on_write,
                     shared_from_this(),
-                    out_buffer,
-                    std::placeholders::_1,
-                    std::placeholders::_2)));
+                    out_buffer));
     }
 
   public:
