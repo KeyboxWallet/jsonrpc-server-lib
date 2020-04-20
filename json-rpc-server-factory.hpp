@@ -146,8 +146,10 @@ class json_rpc_session : public std::enable_shared_from_this<json_rpc_session>, 
             return;
         }
 
-        if (ec)
+        if (ec){
             fail(ec, "read");
+            return;
+        }
 
         if (!ws_.got_text())
         {
