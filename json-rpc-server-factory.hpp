@@ -241,11 +241,7 @@ class json_rpc_session : public std::enable_shared_from_this<json_rpc_session>, 
 
     void do_write(json &oj)
     {
-        do_write(oj);
-        /*
-        strand_.post(
-            std::bind(&json_rpc_session::do_write_, shared_from_this(), oj),
-            boost::asio::get_associated_allocator(this));*/
+        do_write_(oj);
     }
 
   private:
